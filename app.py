@@ -2,8 +2,8 @@ import uuid
 from fastapi import  BackgroundTasks, Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Query, Form, File, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from db import admin_lobby, build_admin_fhir_bundle, convert_patient_to_fhir, convert_patientbase_to_fhir, convert_patientmedical_to_fhir, convert_to_patientcontact_fhir_bundle,doctor_lobby, generate_fhir_bundle, generate_fhir_doctor_bundle, get_collection, post_surgery_to_fhir_bundle, users_collection, patient_data,patient_base ,patient_contact ,patient_medical,patient_surgery_details 
-from models import Admin, Doctor, Patient, PatientBase, PatientContact, PatientMedical, PostSurgeryDetail, QuestionnaireAssignment, QuestionnaireScore
+from db import admin_lobby, build_admin_fhir_bundle, convert_patientbase_to_fhir, convert_patientmedical_to_fhir, convert_to_patientcontact_fhir_bundle,doctor_lobby, generate_fhir_bundle, generate_fhir_doctor_bundle, get_collection, post_surgery_to_fhir_bundle, users_collection, patient_data,patient_base ,patient_contact ,patient_medical,patient_surgery_details 
+from models import Admin, Doctor, PatientBase, PatientContact, PatientMedical, PostSurgeryDetail, QuestionnaireAssignment, QuestionnaireScore
 from datetime import datetime, timezone
 app = FastAPI()
 
@@ -102,21 +102,21 @@ async def register_doctor(doctor: Doctor):
         "doctor_id": str(result.inserted_id)
     }
 
-@app.post("/post_patient/")
-async def post_patient_to_db(patient: Patient):
-    try:
-        fhir_patient = convert_patient_to_fhir(patient)  # corrected function name
-        patient_data.insert_one(fhir_patient)
-        return {
-            "status": "success",
-            "message": "Patient data saved in FHIR format."
-        }
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+# @app.post("/post_patient/")
+# async def post_patient_to_db(patient: Patient):
+#     try:
+#         fhir_patient = convert_patient_to_fhir(patient)  # corrected function name
+#         patient_data.insert_one(fhir_patient)
+#         return {
+#             "status": "success",
+#             "message": "Patient data saved in FHIR format."
+#         }
+#     except Exception as e:
+#         import traceback
+#         print(traceback.format_exc())
+#         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/patients-contact")
+@app.post("/patients-base")
 async def create_patient(patient: PatientBase):
     # Check if patient already exists
     existing = await patient_base.find_one({"id": patient.uhid})

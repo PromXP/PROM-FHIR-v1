@@ -61,28 +61,28 @@ class Admin(BaseModel):
             }
         }
 
-class Patient(BaseModel):
-    uhid: str
-    first_name: str
-    last_name: str
-    password: str
-    vip: Literal[0, 1]
-    dob: str
-    blood_grp: str
-    gender: Literal["male", "female", "other"]
-    height: float
-    weight: float
-    email: EmailStr
-    phone_number: str
-    alternate_phone: str = Field(..., alias="alternatenumber")
-    address: str
-    doctor_uhid: str
-    admin_uhid: str
-    opd_appointment_date: str
-    activation_status: bool
-    activation_comment: Optional[List[Dict[str, Any]]] = []
-    operation_funding: str = Field(..., alias="operationfundion")
-    id_proof: Optional[Dict[str, str]] = Field(default_factory=dict, alias="idproof")
+# class Patient(BaseModel):
+#     uhid: str
+#     first_name: str
+#     last_name: str
+#     password: str
+#     vip: Literal[0, 1]
+#     dob: str
+#     blood_grp: str
+#     gender: Literal["male", "female", "other"]
+#     height: float
+#     weight: float
+#     email: EmailStr
+#     phone_number: str
+#     alternate_phone: str = Field(..., alias="alternatenumber")
+#     address: str
+#     doctor_uhid: str
+#     admin_uhid: str
+#     opd_appointment_date: str
+#     activation_status: bool
+#     activation_comment: Optional[List[Dict[str, Any]]] = []
+#     operation_funding: str = Field(..., alias="operationfundion")
+#     id_proof: Optional[Dict[str, str]] = Field(default_factory=dict, alias="idproof")
 
 class QuestionnaireAssignment(BaseModel):
     uhid: str

@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timezone, date
 
 from pydantic import BaseModel
-from models import Admin, Doctor, Patient, PatientBase, PatientContact, PatientMedical, QuestionnaireAssignment, QuestionnaireScore
+from models import Admin, Doctor, PatientBase, PatientContact, PatientMedical, QuestionnaireAssignment, QuestionnaireScore
 
 # MongoDB setup
 client = motor_asyncio.AsyncIOMotorClient("mongodb+srv://admpromxp:admpromxp@promfhir.15vdylh.mongodb.net/?retryWrites=true&w=majority&appName=PromFhir")
@@ -284,291 +284,302 @@ def build_admin_fhir_bundle(admin: Admin) -> dict:
 #     # Fix: convert date to string-safe format
 #     return bundle.model_dump(mode="json")
 
-def generate_full_url(resource_type: str, resource_id: str) -> str:
-    return f"urn:uuid:{resource_id}"
+# def generate_full_url(resource_type: str, resource_id: str) -> str:
+#     return f"urn:uuid:{resource_id}"
 
-def convert_patient_to_fhir(patient) -> Dict[str, Any]:
-    patient_id = str(uuid.uuid4())
-    patient_full_url = generate_full_url("Patient", patient_id)
+# def convert_patient_to_fhir(patient) -> Dict[str, Any]:
+#     patient_id = str(uuid.uuid4())
+#     patient_full_url = generate_full_url("Patient", patient_id)
 
-    # Practitioner Resource
-    practitioner_id = str(uuid.uuid4())
-    practitioner_full_url = generate_full_url("Practitioner", practitioner_id)
-    practitioner_resource = {
-        "fullUrl": practitioner_full_url,
-        "resource": {
-            "resourceType": "Practitioner",
-            "id": practitioner_id,
-            "name": [{"text": "Default Practitioner"}],
-            "text": {
-                "status": "generated",
-                "div": "<div xmlns='http://www.w3.org/1999/xhtml'>Practitioner: Default Practitioner</div>"
-            }
-        }
-    }
+#     # Practitioner Resource
+#     practitioner_id = str(uuid.uuid4())
+#     practitioner_full_url = generate_full_url("Practitioner", practitioner_id)
+#     practitioner_resource = {
+#         "fullUrl": practitioner_full_url,
+#         "resource": {
+#             "resourceType": "Practitioner",
+#             "id": practitioner_id,
+#             "name": [{"text": "Default Practitioner"}],
+#             "text": {
+#                 "status": "generated",
+#                 "div": "<div xmlns='http://www.w3.org/1999/xhtml'>Practitioner: Default Practitioner</div>"
+#             }
+#         }
+#     }
 
-    # Extract readable values
-    funding = getattr(patient, 'operation_funding', '')
-    comments = getattr(patient, 'activation_comment', [])
-    comments_str = " | ".join(c.get("comment", "") for c in comments if isinstance(c, dict))
+#     # Extract readable values
+#     funding = getattr(patient, 'operationfundion', '')
+#     comments = getattr(patient, 'activation_comment', [])
+#     comments_str = " | ".join(c.get("comment", "") for c in comments if isinstance(c, dict))
 
-    # Patient Resource
-    patient_resource = {
-        "resourceType": "Patient",
-        "id": patient_id,
-        "text": {
-            "status": "generated",
-            "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>"
-                   f"Patient: {patient.first_name or ''} {patient.last_name or ''} - "
-                   f"Funding: {funding} - "
-                   f"Comments: {comments_str}"
-                   f"</div>"
-        },
-        "active": getattr(patient, 'activation_status', True),
-        "identifier": [
-            {
-                "use": "usual",
-                "type": {
-                    "coding": [
-                        {
-                            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
-                            "code": "MR",
-                            "display": "Medical Record Number"
-                        }
-                    ]
-                },
-                "value": patient.uhid
-            }
-        ],
-        "name": [
-            {
-                "use": "official",
-                "family": patient.last_name or '',
-                "given": [patient.first_name or '']
-            }
-        ],
-        "telecom": [],
-        "gender": patient.gender,
-        "birthDate": patient.dob,
-        "address": [{"text": patient.address}],
-        "contact": [],
-        "communication": [
-            {
-                "language": {
-                    "coding": [
-                        {
-                            "system": "urn:ietf:bcp:47",
-                            "code": "en",
-                            "display": "English"
-                        }
-                    ]
-                },
-                "preferred": True
-            }
-        ]
-    }
+#     # Patient Resource
+#     patient_resource = {
+#         "resourceType": "Patient",
+#         "id": patient_id,
+#         "text": {
+#             "status": "generated",
+#             "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>"
+#                    f"Patient: {patient.first_name or ''} {patient.last_name or ''} - "
+#                    f"Funding: {funding} - "
+#                    f"Comments: {comments_str}"
+#                    f"</div>"
+#         },
+#         "active": getattr(patient, 'activation_status', True),
+#         "identifier": [
+#             {
+#                 "use": "usual",
+#                 "type": {
+#                     "coding": [
+#                         {
+#                             "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+#                             "code": "MR",
+#                             "display": "Medical Record Number"
+#                         }
+#                     ]
+#                 },
+#                 "value": patient.uhid
+#             }
+#         ],
+#         "name": [
+#             {
+#                 "use": "official",
+#                 "family": patient.last_name or '',
+#                 "given": [patient.first_name or '']
+#             }
+#         ],
+#         "telecom": [],
+#         "gender": patient.gender,
+#         "birthDate": patient.dob,
+#         "address": [{"text": patient.address}],
+#         "contact": [],
+#         "communication": [
+#             {
+#                 "language": {
+#                     "coding": [
+#                         {
+#                             "system": "urn:ietf:bcp:47",
+#                             "code": "en",
+#                             "display": "English"
+#                         }
+#                     ]
+#                 },
+#                 "preferred": True
+#             }
+#         ]
+#     }
 
-    # Telecom
-    if getattr(patient, 'phone_number', None):
-        patient_resource["telecom"].append({
-            "system": "phone", "value": patient.phone_number, "use": "mobile"
-        })
-    if getattr(patient, 'alternatenumber', None):
-        patient_resource["telecom"].append({
-            "system": "phone", "value": patient.alternatenumber, "use": "home"
-        })
-    if getattr(patient, 'email', None):
-        patient_resource["telecom"].append({
-            "system": "email", "value": patient.email, "use": "home"
-        })
+#     # Telecom
+#     if getattr(patient, 'phone_number', None):
+#         patient_resource["telecom"].append({
+#             "system": "phone", "value": patient.phone_number, "use": "mobile"
+#         })
+#     if getattr(patient, 'alternatenumber', None):
+#         patient_resource["telecom"].append({
+#             "system": "phone", "value": patient.alternatenumber, "use": "home"
+#         })
+#     if getattr(patient, 'email', None):
+#         patient_resource["telecom"].append({
+#             "system": "email", "value": patient.email, "use": "home"
+#         })
 
-    # Contacts
-    if getattr(patient, 'admin_uhid', None):
-        patient_resource["contact"].append({
-            "name": {"text": "Admin"},
-            "telecom": [{"system": "other", "value": patient.admin_uhid}],
-            "relationship": [
-                {
-                    "coding": [
-                        {
-                            "system": "http://terminology.hl7.org/CodeSystem/v2-0131",
-                            "code": "C",
-                            "display": "Emergency Contact"
-                        }
-                    ]
-                }
-            ]
-        })
+#     # Contacts
+#     if getattr(patient, 'admin_uhid', None):
+#         patient_resource["contact"].append({
+#             "name": {"text": "Admin"},
+#             "telecom": [{"system": "other", "value": patient.admin_uhid}],
+#             "relationship": [
+#                 {
+#                     "coding": [
+#                         {
+#                             "system": "http://terminology.hl7.org/CodeSystem/v2-0131",
+#                             "code": "C",
+#                             "display": "Emergency Contact"
+#                         }
+#                     ]
+#                 }
+#             ]
+#         })
 
-    if getattr(patient, 'doctor_uhid', None):
-        patient_resource["contact"].append({
-            "name": {"text": "Doctor"},
-            "telecom": [{"system": "other", "value": patient.doctor_uhid}],
-            "relationship": [
-                {
-                    "coding": [
-                        {
-                            "system": "http://terminology.hl7.org/CodeSystem/v2-0131",
-                            "code": "PR",
-                            "display": "Person preparing referral"
-                        }
-                    ]
-                }
-            ]
-        })
+#     if getattr(patient, 'doctor_uhid', None):
+#         patient_resource["contact"].append({
+#             "name": {"text": "Doctor"},
+#             "telecom": [{"system": "other", "value": patient.doctor_uhid}],
+#             "relationship": [
+#                 {
+#                     "coding": [
+#                         {
+#                             "system": "http://terminology.hl7.org/CodeSystem/v2-0131",
+#                             "code": "PR",
+#                             "display": "Person preparing referral"
+#                         }
+#                     ]
+#                 }
+#             ]
+#         })
 
-    # ID Proof Identifier
-    idproof = getattr(patient, 'id_proof', None)
-    if isinstance(idproof, dict):
-        idproof_value = idproof.get("value")
-        idproof_type = idproof.get("type", "unknown")
-        if idproof_value:
-            patient_resource["identifier"].append({
-                "use": "official",
-                "type": {
-                    "coding": [
-                        {
-                            "system": "http://hospital.org/idproof",
-                            "code": idproof_type,
-                            "display": idproof_type.title()
-                        }
-                    ],
-                    "text": idproof_type.title()
-                },
-                "value": idproof_value
-            })
+#     # ID Proof Identifier
+#     idproof = getattr(patient, 'idproof', None)
+#     if isinstance(idproof, dict):
+#         idproof_value = idproof.get("value")
+#         idproof_type = idproof.get("type", "unknown")
+#         if idproof_value:
+#             patient_resource["identifier"].append({
+#                 "use": "official",
+#                 "type": {
+#                     "coding": [
+#                         {
+#                             "system": "http://hospital.org/idproof",
+#                             "code": idproof_type,
+#                             "display": idproof_type.title()
+#                         }
+#                     ],
+#                     "text": idproof_type.title()
+#                 },
+#                 "value": idproof_value
+#             })
 
-    # Observation helper
-    def create_observation(display, value, unit, loinc_code, profile_url):
-        if value is None:
-            return None
-        obs_id = str(uuid.uuid4())
-        return {
-            "fullUrl": generate_full_url("Observation", obs_id),
-            "resource": {
-                "resourceType": "Observation",
-                "id": obs_id,
-                "meta": {"profile": [profile_url]},
-                "status": "final",
-                "category": [
-                    {
-                        "coding": [
-                            {
-                                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
-                                "code": "vital-signs",
-                                "display": "Vital Signs"
-                            }
-                        ]
-                    }
-                ],
-                "code": {
-                    "coding": [
-                        {
-                            "system": "http://loinc.org",
-                            "code": loinc_code,
-                            "display": display
-                        }
-                    ],
-                    "text": display
-                },
-                "subject": {"reference": patient_full_url},
-                "effectiveDateTime": patient.dob,
-                "performer": [{"reference": practitioner_full_url}],
-                "valueQuantity": {
-                    "value": float(value),
-                    "unit": unit,
-                    "system": "http://unitsofmeasure.org",
-                    "code": unit
-                },
-                "text": {
-                    "status": "generated",
-                    "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>{display}: {value} {unit}</div>"
-                }
-            }
-        }
+#     effective_dt = getattr(patient, 'opd_appointment_date', None)
+#     if not effective_dt:
+#         effective_dt = datetime.utcnow().date().isoformat()
 
-    # Blood Group Observation
-    blood_obs_id = str(uuid.uuid4())
-    blood_group_observation = {
-        "fullUrl": generate_full_url("Observation", blood_obs_id),
-        "resource": {
-            "resourceType": "Observation",
-            "id": blood_obs_id,
-            "status": "final",
-            "category": [
-                {
-                    "coding": [
-                        {
-                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
-                            "code": "laboratory",
-                            "display": "Laboratory"
-                        }
-                    ]
-                }
-            ],
-            "code": {
-                "coding": [
-                    {
-                        "system": "http://loinc.org",
-                        "code": "883-9",
-                        "display": "ABO group [Type] in Blood"
-                    }
-                ],
-                "text": "Blood Group"
-            },
-            "subject": {"reference": patient_full_url},
-            "effectiveDateTime": patient.dob,
-            "performer": [{"reference": practitioner_full_url}],
-            "valueString": patient.blood_grp,
-            "text": {
-                "status": "generated",
-                "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Blood Group: {patient.blood_grp}</div>"
-            }
-        }
-    }
+#     # Replace your existing create_observation with this
+#     def create_observation(display, text_display, quantity, value_type="valueQuantity"):
+#         obs_id = str(uuid.uuid4())
+#         return {
+#             "fullUrl": generate_full_url("Observation", obs_id),
+#             "resource": {
+#                 "resourceType": "Observation",
+#                 "id": obs_id,
+#                 "status": "final",
+#                 "category": [
+#                     {
+#                         "coding": [
+#                             {
+#                                 "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+#                                 "code": "vital-signs",
+#                                 "display": "Vital Signs"
+#                             }
+#                         ]
+#                     }
+#                 ],
+#                 "code": {
+#                     "text": text_display
+#                 },
+#                 "subject": {"reference": patient_full_url},
+#                 "effectiveDateTime": effective_dt,
+#                 "performer": [{"reference": practitioner_full_url}],
+#                 value_type: quantity,
+#                 "text": {
+#                     "status": "generated",
+#                     "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>{display}: {quantity.get('value', '')} {quantity.get('unit', '')}</div>"
+#                 }
+#             }
+#         }
 
-    # Height and Weight Observations
-    height_obs = create_observation("Body Height", patient.height, "cm", "8302-2", "http://hl7.org/fhir/StructureDefinition/bodyheight")
-    weight_obs = create_observation("Body Weight", patient.weight, "kg", "29463-7", "http://hl7.org/fhir/StructureDefinition/bodyweight")
 
-    # VIP Flag
-    vip_flag = None
-    if getattr(patient, 'vip', 0) == 1:
-        vip_id = str(uuid.uuid4())
-        vip_flag = {
-            "fullUrl": generate_full_url("Flag", vip_id),
-            "resource": {
-                "resourceType": "Flag",
-                "id": vip_id,
-                "status": "active",
-                "code": {"text": "VIP Patient"},
-                "subject": {"reference": patient_full_url},
-                "text": {
-                    "status": "generated",
-                    "div": "<div xmlns='http://www.w3.org/1999/xhtml'>VIP Patient</div>"
-                }
-            }
-        }
+#     # Blood Group Observation
+#     blood_obs_id = str(uuid.uuid4())
+#     blood_group_observation = {
+#         "fullUrl": generate_full_url("Observation", blood_obs_id),
+#         "resource": {
+#             "resourceType": "Observation",
+#             "id": blood_obs_id,
+#             "status": "final",
+#             "category": [
+#                 {
+#                     "coding": [
+#                         {
+#                             "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+#                             "code": "laboratory",
+#                             "display": "Laboratory"
+#                         }
+#                     ]
+#                 }
+#             ],
+#             "code": {
+#                 "coding": [
+#                     {
+#                         "system": "http://loinc.org",
+#                         "code": "883-9",
+#                         "display": "ABO group [Type] in Blood"
+#                     }
+#                 ],
+#                 "text": "Blood Group"
+#             },
+#             "subject": {"reference": patient_full_url},
+#             "effectiveDateTime": patient.dob,
+#             "performer": [{"reference": practitioner_full_url}],
+#             "valueString": patient.blood_grp,
+#             "text": {
+#                 "status": "generated",
+#                 "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Blood Group: {patient.blood_grp}</div>"
+#             }
+#         }
+#     }
 
-    # Final Bundle
-    entries = [
-        {"fullUrl": patient_full_url, "resource": patient_resource},
-        practitioner_resource,
-        blood_group_observation,
-    ]
+#     if patient.height is not None:
+#         height_obs = create_observation(
+#             "Height",
+#             "Height (cm)",
+#             {
+#                 "value": patient.height,
+#                 "unit": "cm",
+#                 "system": "http://unitsofmeasure.org",
+#                 "code": "cm"
+#             }
+#         )
 
-    if height_obs:
-        entries.append(height_obs)
-    if weight_obs:
-        entries.append(weight_obs)
-    if vip_flag:
-        entries.append(vip_flag)
+#     if patient.weight is not None:
+#         weight_obs = create_observation(
+#             "Weight",
+#             "Weight (kg)",
+#             {
+#                 "value": patient.weight,
+#                 "unit": "kg",
+#                 "system": "http://unitsofmeasure.org",
+#                 "code": "kg"
+#             }
+#         )
 
-    return {
-        "resourceType": "Bundle",
-        "type": "collection",
-        "entry": entries
-    }
+
+#     # VIP Flag
+#     vip_flag = None
+#     if getattr(patient, 'vip', 0) == 1:
+#         vip_id = str(uuid.uuid4())
+#         vip_flag = {
+#             "fullUrl": generate_full_url("Flag", vip_id),
+#             "resource": {
+#                 "resourceType": "Flag",
+#                 "id": vip_id,
+#                 "status": "active",
+#                 "code": {"text": "VIP Patient"},
+#                 "subject": {"reference": patient_full_url},
+#                 "text": {
+#                     "status": "generated",
+#                     "div": "<div xmlns='http://www.w3.org/1999/xhtml'>VIP Patient</div>"
+#                 }
+#             }
+#         }
+
+#     # Final Bundle
+#     entries = [
+#         {"fullUrl": patient_full_url, "resource": patient_resource},
+#         practitioner_resource,
+#         blood_group_observation,
+#     ]
+
+#     if height_obs:
+#         entries.append(height_obs)
+#     if weight_obs:
+#         entries.append(weight_obs)
+#     if vip_flag:
+#         entries.append(vip_flag)
+
+#     return {
+#         "resourceType": "Bundle",
+#         "type": "collection",
+#         "entry": entries
+#     }
 
 def convert_patientbase_to_fhir(patient) -> dict:
     patient_uuid = str(uuid.uuid4())
@@ -876,10 +887,10 @@ def convert_patientmedical_to_fhir(patient: PatientMedical) -> Dict[str, Any]:
         "resource": {
             "resourceType": "Organization",
             "id": org_uuid,
-            "name": patient.operation_funding,
+            "name": patient.operationfundion,
             "text": {
                 "status": "generated",
-                "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Organization: {patient.operation_funding}</div>"
+                "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Organization: {patient.operationfundion}</div>"
             }
         }
     })
@@ -892,7 +903,7 @@ def convert_patientmedical_to_fhir(patient: PatientMedical) -> Dict[str, Any]:
         "id": str(uuid.uuid4()),
         "status": "active",
         "kind": "insurance",
-        "type": {"text": patient.operation_funding},  # e.g., "Government Scheme"
+        "type": {"text": patient.operationfundion},  # e.g., "Government Scheme"
         "beneficiary": {"reference": subject_ref},
         "subscriber": {"reference": subject_ref},  # ✅ Must be Patient or RelatedPerson
         "text": {
