@@ -24,6 +24,7 @@ class Doctor(BaseModel):
     password: str
     admin_created: str
     profile_picture_url: Optional[str] = None
+    doctor_council_number: Optional[str] = None
 
     class Config:
         schema_extra = {
@@ -191,7 +192,6 @@ class PatientBase(BaseModel):
     vip: Literal[0, 1]
     dob: str
     gender: Literal["male", "female", "other"]
-    doctor_council_number: Optional[str] = None
 
 class PatientContact(BaseModel):
     uhid: str

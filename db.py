@@ -62,7 +62,10 @@ def generate_fhir_doctor_bundle(doctor: Doctor) -> dict:
             {"system": "phone", "value": doctor.phone_number}
         ],
         "identifier": [
-            {"system": "http://hospital.org/uhid", "value": doctor.uhid}
+            {
+                "system": "http://hospital.org/uhid",
+                "value": doctor.uhid
+            }
         ]
     }
 
@@ -72,6 +75,27 @@ def generate_fhir_doctor_bundle(doctor: Doctor) -> dict:
             "contentType": "image/jpeg",  # or "image/png" if applicable
             "url": doctor.profile_picture_url
         }]
+
+    # ✅ Add Doctor Council Number if provided
+    if getattr(doctor, "doctor_council_number", None):
+        practitioner["identifier"].append({
+            "use": "secondary",
+            "type": {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                        "code": "PRN",  # Provider Number
+                        "display": "Provider Number"
+                    }
+                ],
+                "text": "Doctor Council Number"
+            },
+            "system": "http://hospital.smarthealth.org/doctor-council-number",
+            "value": doctor.doctor_council_number,
+            "assigner": {
+                "display": "Medical Council Authority"
+            }
+        })
 
     # PractitionerRole resource (without CodeSystem)
     practitioner_role = {
@@ -634,27 +658,6 @@ def convert_patientbase_to_fhir(patient) -> dict:
             "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Patient: {patient.first_name} {patient.last_name}</div>"
         }
     }
-
-    # ✅ Add doctor_council_number if present (FHIR-compliant)
-    if patient.doctor_council_number:
-        fhir_patient["identifier"].append({
-            "use": "secondary",
-            "type": {
-                "coding": [
-                    {
-                        "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
-                        "code": "PRN",  # ✅ Provider Number (standard FHIR code)
-                        "display": "Provider Number"
-                    }
-                ],
-                "text": "Doctor Council Number"
-            },
-            "system": "http://hospital.smarthealth.org/doctor-council-number",
-            "value": patient.doctor_council_number,
-            "assigner": {
-                "display": "Medical Council Authority"
-            }
-        })
 
     # Observation resource (VIP status)
     fhir_vip_observation = {
