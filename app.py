@@ -118,32 +118,67 @@ async def register_doctor(doctor: Doctor):
 
 @app.post("/patients-base")
 async def create_patient(patient: PatientBase):
-    # Check if patient already exists
-    existing = await patient_base.find_one({"id": patient.uhid})
-    if existing:
-        raise HTTPException(status_code=400, detail="Patient already exists")
+    # Check if patient already exists in patient_base
+    existing_patient = await patient_base.find_one({"id": patient.uhid})
+    if existing_patient:
+        raise HTTPException(status_code=400, detail="Patient already exists in patient_base")
+
+    # Check if UHID already exists in Users
+    existing_user = await users_collection.find_one({"uhid": patient.uhid})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="UHID already exists in Users collection")
 
     # Convert to FHIR Bundle
     fhir_data = convert_patientbase_to_fhir(patient)
 
-    # Store in MongoDB
-    result = await patient_base.insert_one(fhir_data)
+    # Store in patient_base collection
+    await patient_base.insert_one(fhir_data)
+
+    # Insert into Users collection
+    user_doc = {
+        "uhid": patient.uhid,
+        "email": "",  # No email yet
+        "phone": "",  # No phone yet
+        "type": "patient",
+        "created_at": datetime.utcnow().isoformat(),
+        "password": patient.password
+    }
+    await users_collection.insert_one(user_doc)
 
     return {
-        "message": "Patient created successfully",
-        "patient_id": patient.uhid  # Use patient.uhid directly
+        "message": "Patient created successfully and added to Users collection",
+        "patient_id": patient.uhid
     }
+
 
 @app.post("/fhir/store-patient-contact")
 async def store_patient_contact(contact: PatientContact):
+    # Check if email or phone already exists in Users for other UHID
+    existing_email = await users_collection.find_one({"email": contact.email, "uhid": {"$ne": contact.uhid}})
+    if existing_email:
+        raise HTTPException(status_code=400, detail="Email already exists for another user")
+
+    existing_phone = await users_collection.find_one({"phone": contact.phone_number, "uhid": {"$ne": contact.uhid}})
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="Phone number already exists for another user")
+
     # Convert to FHIR Bundle
     fhir_bundle = convert_to_patientcontact_fhir_bundle(contact)
 
     # Store the FHIR Bundle in the database
     await patient_contact.insert_one(fhir_bundle)
 
+    # Update Users collection with email and phone
+    await users_collection.update_one(
+        {"uhid": contact.uhid},
+        {"$set": {
+            "email": contact.email,
+            "phone": contact.phone_number
+        }}
+    )
+
     return {
-        "message": "Patient contact stored successfully"
+        "message": "Patient contact stored successfully and Users collection updated"
     }
 
 @app.post("/fhir/store-patient-medical")
