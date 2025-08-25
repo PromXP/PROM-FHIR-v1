@@ -2,8 +2,8 @@ import uuid
 from fastapi import  BackgroundTasks, Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Query, Form, File, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from db import admin_lobby, build_admin_fhir_bundle, convert_patientbase_to_fhir, convert_patientmedical_to_fhir, convert_to_patientcontact_fhir_bundle,doctor_lobby, generate_fhir_bundle, generate_fhir_doctor_bundle, get_collection, post_surgery_to_fhir_bundle, users_collection, patient_data,patient_base ,patient_contact ,patient_medical,patient_surgery_details 
-from models import Admin, Doctor, PatientBase, PatientContact, PatientMedical, PostSurgeryDetail, QuestionnaireAssignment, QuestionnaireScore
+from db import admin_lobby, build_admin_fhir_bundle, convert_patientbase_to_fhir, convert_patientmedical_to_fhir, convert_to_patientcontact_fhir_bundle,doctor_lobby, feedback_to_fhir_bundle, generate_fhir_bundle, generate_fhir_doctor_bundle, get_collection, post_surgery_to_fhir_bundle, users_collection,patient_base ,patient_contact ,patient_medical,patient_surgery_details,feedback
+from models import Admin, Doctor, Feedback, PatientBase, PatientContact, PatientMedical, PostSurgeryDetail, QuestionnaireAssignment, QuestionnaireScore
 from datetime import datetime, timezone
 app = FastAPI()
 
@@ -240,9 +240,28 @@ async def add_score(data: QuestionnaireScore):
             and res.get("code", {}).get("text") == data.name
             and f"({data.period})" in res.get("valueString", "")
         ):
-            res["valueString"] = f"Scores ({data.period}): {', '.join(str(s) for s in data.score)}"
+            # ✅ Update score display with timestamp
+            res["valueString"] = f"Scores ({data.period}): {', '.join(str(s) for s in data.score)} (Recorded at {data.timestamp})"
+
+            # ✅ Update Observation status
             res["status"] = "final"
-            res["effectiveDateTime"] = data.timestamp
+
+            # ✅ Update Completion Status to true
+            for comp in res.get("component", []):
+                if comp.get("code", {}).get("text") == "Completion Status":
+                    comp["valueBoolean"] = True
+                    break
+
+            # ✅ Add others as Observation.note
+            if data.others:
+                res["note"] = [{"text": note} for note in data.others]
+
+            # ✅ Update narrative text
+            res["text"]["div"] = (
+                f'<div xmlns="http://www.w3.org/1999/xhtml">'
+                f'<p>{data.name} Scores ({data.period}), Completed: 1 at {data.timestamp}</p></div>'
+            )
+
             updated = True
             break
 
@@ -251,7 +270,9 @@ async def add_score(data: QuestionnaireScore):
 
     await collection.update_one({"_id": bundle["_id"]}, {"$set": {"entry": bundle["entry"]}})
 
-    return {"message": "Score updated successfully"}
+    return {"message": "Score, timestamp, and additional notes updated successfully"}
+
+
 
 @app.post("/surgery_details")
 async def create_surgery_details(details: PostSurgeryDetail):
@@ -264,3 +285,19 @@ async def create_surgery_details(details: PostSurgeryDetail):
         return {"inserted_id": str(result.inserted_id), "message": "Surgery details stored successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error storing surgery details: {str(e)}")
+    
+@app.post("/feedback/fhir")
+async def post_feedback_fhir(details: Feedback):
+    # Convert Feedback details into FHIR Bundle
+    fhir_bundle = feedback_to_fhir_bundle(details)
+
+    # Convert FHIR Bundle to JSON-serializable format
+    fhir_bundle_json = jsonable_encoder(fhir_bundle)
+
+    # Insert FHIR Bundle into MongoDB
+    result = feedback.insert_one(fhir_bundle_json)
+
+    return {
+        "message": "FHIR bundle stored successfully",
+
+    }

@@ -23,6 +23,7 @@ class Doctor(BaseModel):
     blood_group: str
     password: str
     admin_created: str
+    profile_picture_url: Optional[str] = None
 
     class Config:
         schema_extra = {
@@ -37,6 +38,7 @@ class Doctor(BaseModel):
                 "blood_group": "A+",
                 "email": "dr.john@example.com",
                 "password": "securePass123",
+                "profile_picture_url": "https://example.com/profile.jpg",
             }
         }
 
@@ -45,9 +47,10 @@ class Admin(BaseModel):
     gender: Literal["male", "female", "other"]
     dob: str
     password: str
-    uhid : str
-    phone_number : str
+    uhid: str
+    phone_number: str
     email: EmailStr
+    profile_picture_url: Optional[str] = None  # ✅ Added
 
     class Config:
         schema_extra = {
@@ -58,8 +61,10 @@ class Admin(BaseModel):
                 "phone_number": "1234567890",
                 "password": "adminSecure@456",
                 "email": "alice.admin@example.com",
+                "profile_picture_url": "https://example.com/admin-profile.jpg"  # ✅ Added
             }
         }
+
 
 # class Patient(BaseModel):
 #     uhid: str
@@ -83,6 +88,13 @@ class Admin(BaseModel):
 #     activation_comment: Optional[List[Dict[str, Any]]] = []
 #     operation_funding: str = Field(..., alias="operationfundion")
 #     id_proof: Optional[Dict[str, str]] = Field(default_factory=dict, alias="idproof")
+
+class Feedback(BaseModel):
+    uhid: str
+    side: Literal["left", "right"]
+    period: str
+    timestamp: datetime
+    rating: List[int]
 
 class QuestionnaireAssignment(BaseModel):
     uhid: str
@@ -179,6 +191,7 @@ class PatientBase(BaseModel):
     vip: Literal[0, 1]
     dob: str
     gender: Literal["male", "female", "other"]
+    doctor_council_number: Optional[str] = None
 
 class PatientContact(BaseModel):
     uhid: str
@@ -192,15 +205,23 @@ class PatientContact(BaseModel):
     opd_appointment_date: str
     profile_picture_url: Optional[str] = None  # Add this line
 
+class CommentEntry(BaseModel):
+    timestamp: str  # ISO 8601 datetime string
+    comment: str
+
 class PatientMedical(BaseModel):
     uhid: str
     blood_grp: str
     height: float
     weight: float
     activation_status: bool
-    activation_comment: Optional[List[Dict[str, Any]]] = []
-    operation_funding: str = Field(..., alias="operationfundion")
+    activation_comment: Optional[List[CommentEntry]] = []
+    patient_followup_comment: Optional[List[CommentEntry]] = []  # ✅ New field
+    operation_funding: str 
     id_proof: Optional[Dict[str, str]] = Field(default_factory=dict, alias="idproof")
+    patient_current_status: Literal["LEFT", "RIGHT", "LEFT, RIGHT"]
+    surgery_date_left: Optional[str]
+    surgery_date_right: Optional[str]
 
 
 ###extra stuff for deletion (maybe)

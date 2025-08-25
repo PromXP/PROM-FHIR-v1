@@ -11,9 +11,9 @@ from datetime import datetime
 from fhir.resources.narrative import Narrative
 import uuid
 from datetime import datetime, timezone, date
-
+from fhir.resources.attachment import Attachment
 from pydantic import BaseModel
-from models import Admin, Doctor, PatientBase, PatientContact, PatientMedical, QuestionnaireAssignment, QuestionnaireScore
+from models import Admin, Doctor, Feedback, PatientBase, PatientContact, PatientMedical, QuestionnaireAssignment, QuestionnaireScore
 
 # MongoDB setup
 client = motor_asyncio.AsyncIOMotorClient("mongodb+srv://admpromxp:admpromxp@promfhir.15vdylh.mongodb.net/?retryWrites=true&w=majority&appName=PromFhir")
@@ -21,15 +21,13 @@ database = client.Main
 users_collection = database.Users
 admin_lobby = database.Admin_Lobby 
 doctor_lobby = database.Doctor_Lobby 
-patient_data = database.Patient_Data
 patient_base = database.Patient_Base
 patient_contact = database.Patient_Contact
 patient_medical = database.Patient_Medical
 medical_left = database.Medical_Left
 medical_right = database.Medical_Right
-patient_identity = database.Patient_Identity
-profile_photos = database.Profile_Photos
 patient_surgery_details = database.Patient_Surgery_Details
+feedback = database.Feedback
 
 now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -39,7 +37,6 @@ def generate_fhir_doctor_bundle(doctor: Doctor) -> dict:
     except ValueError:
         raise HTTPException(status_code=400, detail="DOB must be in 'DD-MM-YYYY' format")
 
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     doctor_uuid = str(uuid.uuid4()).lower()
     role_uuid = str(uuid.uuid4()).lower()
 
@@ -49,7 +46,7 @@ def generate_fhir_doctor_bundle(doctor: Doctor) -> dict:
         "entry": []
     }
 
-    # Practitioner resource (Doctor core info)
+    # Practitioner resource (Doctor core info with profile photo)
     practitioner = {
         "resourceType": "Practitioner",
         "id": doctor_uuid,
@@ -69,7 +66,14 @@ def generate_fhir_doctor_bundle(doctor: Doctor) -> dict:
         ]
     }
 
-    # PractitionerRole resource (role & custom data)
+    # ✅ Add profile photo if provided
+    if getattr(doctor, "profile_picture_url", None):
+        practitioner["photo"] = [{
+            "contentType": "image/jpeg",  # or "image/png" if applicable
+            "url": doctor.profile_picture_url
+        }]
+
+    # PractitionerRole resource (without CodeSystem)
     practitioner_role = {
         "resourceType": "PractitionerRole",
         "id": role_uuid,
@@ -81,6 +85,7 @@ def generate_fhir_doctor_bundle(doctor: Doctor) -> dict:
             "reference": f"urn:uuid:{doctor_uuid}"
         },
         "active": True,
+        # ✅ Only text for designation (no CodeSystem)
         "code": [{
             "text": doctor.designation
         }],
@@ -94,7 +99,6 @@ def generate_fhir_doctor_bundle(doctor: Doctor) -> dict:
                 "value": doctor.admin_created
             }
         ]
-        # ⚠️ `telecom` removed here to fix error — not valid in PractitionerRole in this context
     }
 
     # Add both resources to the bundle
@@ -133,10 +137,16 @@ def build_admin_fhir_bundle(admin: Admin) -> dict:
         ],
         identifier=[
             Identifier.construct(system="http://hospital.org/uhid", value=admin.uhid)
-        ]
+        ],
+        photo=[
+            Attachment.construct(
+                contentType="image/jpeg",
+                url=admin.profile_picture_url
+            )
+        ] if admin.profile_picture_url else None
     )
 
-    # PractitionerRole resource (use valid code 'other' with your own text label)
+    # PractitionerRole resource (removed code)
     practitioner_role = PractitionerRole.construct(
         id=role_uuid,
         text=Narrative.construct(
@@ -144,14 +154,6 @@ def build_admin_fhir_bundle(admin: Admin) -> dict:
             div=f"<div xmlns='http://www.w3.org/1999/xhtml'>Hospital Administrator Role</div>"
         ),
         practitioner={"reference": f"urn:uuid:{practitioner_uuid}"},
-        code=[{
-            "text": "Hospital Administrator",
-            "coding": [{
-                "system": "http://terminology.hl7.org/CodeSystem/practitioner-role",
-                "code": "ict",
-                "display": "ICT professional"
-            }]
-        }],
         telecom=[ContactPoint.construct(system="email", value=admin.email)],
         active=True
     )
@@ -173,6 +175,7 @@ def build_admin_fhir_bundle(admin: Admin) -> dict:
     )
 
     return bundle.dict()
+
 
 # def convert_patient_to_fhir_bundle(patient: Patient) -> Dict:
 #     # Create the Patient resource
@@ -585,6 +588,13 @@ def convert_patientbase_to_fhir(patient) -> dict:
     patient_uuid = str(uuid.uuid4())
     vip_obs_uuid = str(uuid.uuid4())
 
+    # ✅ Ensure date is in YYYY-MM-DD format
+    try:
+        birth_date = datetime.strptime(patient.dob, "%d-%m-%Y").strftime("%Y-%m-%d")
+    except ValueError:
+        birth_date = patient.dob  # Assume already in correct format
+
+    # Patient resource
     fhir_patient = {
         "resourceType": "Patient",
         "id": patient_uuid,
@@ -613,7 +623,7 @@ def convert_patientbase_to_fhir(patient) -> dict:
             }
         ],
         "gender": patient.gender,
-        "birthDate": patient.dob,
+        "birthDate": birth_date,
         "meta": {
             "profile": [
                 "http://hl7.org/fhir/StructureDefinition/Patient"
@@ -625,6 +635,28 @@ def convert_patientbase_to_fhir(patient) -> dict:
         }
     }
 
+    # ✅ Add doctor_council_number if present (FHIR-compliant)
+    if patient.doctor_council_number:
+        fhir_patient["identifier"].append({
+            "use": "secondary",
+            "type": {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                        "code": "PRN",  # ✅ Provider Number (standard FHIR code)
+                        "display": "Provider Number"
+                    }
+                ],
+                "text": "Doctor Council Number"
+            },
+            "system": "http://hospital.smarthealth.org/doctor-council-number",
+            "value": patient.doctor_council_number,
+            "assigner": {
+                "display": "Medical Council Authority"
+            }
+        })
+
+    # Observation resource (VIP status)
     fhir_vip_observation = {
         "resourceType": "Observation",
         "id": vip_obs_uuid,
@@ -641,7 +673,6 @@ def convert_patientbase_to_fhir(patient) -> dict:
             }
         ],
         "code": {
-            # Minimal code info without custom system:
             "text": "VIP Status"
         },
         "subject": {
@@ -660,6 +691,7 @@ def convert_patientbase_to_fhir(patient) -> dict:
         }
     }
 
+    # Bundle resource
     bundle = {
         "resourceType": "Bundle",
         "type": "collection",
@@ -676,6 +708,7 @@ def convert_patientbase_to_fhir(patient) -> dict:
     }
 
     return bundle
+
 
 def convert_to_patientcontact_fhir_bundle(contact: PatientContact) -> dict:
     from datetime import datetime, timedelta
@@ -791,7 +824,7 @@ def convert_to_patientcontact_fhir_bundle(contact: PatientContact) -> dict:
     return bundle
 
 
-def convert_patientmedical_to_fhir(patient: PatientMedical) -> Dict[str, Any]:
+def convert_patientmedical_to_fhir(patient) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     subject_ref = f"urn:uuid:{str(uuid.uuid4())}"
 
@@ -816,7 +849,6 @@ def convert_patientmedical_to_fhir(patient: PatientMedical) -> Dict[str, Any]:
             "id": str(uuid.uuid4()),
             "status": "final",
             "code": {"text": code_text},
-            value_type: {"value": value, "unit": unit} if unit else value,
             "subject": {"reference": subject_ref},
             "effectiveDateTime": now,
             "performer": [{"reference": subject_ref}],
@@ -825,38 +857,26 @@ def convert_patientmedical_to_fhir(patient: PatientMedical) -> Dict[str, Any]:
                 "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>{code_text}: {value} {unit or ''}</div>"
             }
         }
-        return {
-            "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-            "resource": obs
-        }
+        # Set value type
+        if value_type == "valueQuantity" and unit:
+            obs["valueQuantity"] = {"value": value, "unit": unit}
+        elif value_type == "valueBoolean":
+            obs["valueBoolean"] = value
+        else:
+            obs["valueString"] = str(value)
+        return {"fullUrl": f"urn:uuid:{str(uuid.uuid4())}", "resource": obs}
 
+    # Core patient observations
     entries.append(create_observation("Blood Group", patient.blood_grp))
     entries.append(create_observation("Height", patient.height, value_type="valueQuantity", unit="cm"))
     entries.append(create_observation("Weight", patient.weight, value_type="valueQuantity", unit="kg"))
 
     # Activation Status
-    entries.append({
-        "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-        "resource": {
-            "resourceType": "Observation",
-            "id": str(uuid.uuid4()),
-            "status": "final",
-            "code": {"text": "Activation Status"},
-            "valueBoolean": patient.activation_status,
-            "subject": {"reference": subject_ref},
-            "effectiveDateTime": now,
-            "performer": [{"reference": subject_ref}],
-            "text": {
-                "status": "generated",
-                "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Activation Status: {patient.activation_status}</div>"
-            }
-        }
-    })
+    entries.append(create_observation("Activation Status", patient.activation_status, value_type="valueBoolean"))
 
     # Activation Comments → Provenance
     for comment in patient.activation_comment:
-        comment_time = comment.get("date", now)
-        # Ensure proper instant format (ISO 8601 with time)
+        comment_time = comment.timestamp if hasattr(comment, 'timestamp') else now
         if 'T' not in comment_time:
             comment_time += "T00:00:00Z"
         entries.append({
@@ -867,54 +887,77 @@ def convert_patientmedical_to_fhir(patient: PatientMedical) -> Dict[str, Any]:
                 "target": [{"reference": subject_ref}],
                 "recorded": comment_time,
                 "activity": {"text": "Activation Comment"},
-                "agent": [{
-                    "type": {"text": "Practitioner"},
-                    "who": {"reference": subject_ref}
-                }],
+                "agent": [{"type": {"text": "Practitioner"}, "who": {"reference": subject_ref}}],
                 "text": {
                     "status": "generated",
-                    "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Comment: {comment.get('comment')}</div>"
+                    "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Comment: {comment.comment}</div>"
                 }
             }
         })
 
-        # Create Organization resource for operation funding
+    # Patient Follow-up Comments → Provenance
+    for comment in patient.patient_followup_comment:
+        comment_time = comment.timestamp if hasattr(comment, 'timestamp') else now
+        if 'T' not in comment_time:
+            comment_time += "T00:00:00Z"
+        entries.append({
+            "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
+            "resource": {
+                "resourceType": "Provenance",
+                "id": str(uuid.uuid4()),
+                "target": [{"reference": subject_ref}],
+                "recorded": comment_time,
+                "activity": {"text": "Patient Follow-up Comment"},
+                "agent": [{"type": {"text": "Practitioner"}, "who": {"reference": subject_ref}}],
+                "text": {
+                    "status": "generated",
+                    "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Follow-up Comment: {comment.comment}</div>"
+                }
+            }
+        })
+
+    # Surgery Status Observations
+    entries.append(create_observation("Patient Current Status", patient.patient_current_status))
+    if patient.surgery_date_left:
+        entries.append(create_observation("Surgery Date Left", patient.surgery_date_left))
+    if patient.surgery_date_right:
+        entries.append(create_observation("Surgery Date Right", patient.surgery_date_right))
+
+    # Organization resource for operation funding
     org_uuid = str(uuid.uuid4())
     org_ref = f"urn:uuid:{org_uuid}"
-
     entries.append({
         "fullUrl": org_ref,
         "resource": {
             "resourceType": "Organization",
             "id": org_uuid,
-            "name": patient.operationfundion,
+            "name": patient.operation_funding,
             "text": {
                 "status": "generated",
-                "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Organization: {patient.operationfundion}</div>"
+                "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Organization: {patient.operation_funding}</div>"
             }
         }
     })
 
-    # Coverage: Operation Funding (linking to Organization)
+    # Coverage: Operation Funding
     entries.append({
-    "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-    "resource": {
-        "resourceType": "Coverage",
-        "id": str(uuid.uuid4()),
-        "status": "active",
-        "kind": "insurance",
-        "type": {"text": patient.operationfundion},  # e.g., "Government Scheme"
-        "beneficiary": {"reference": subject_ref},
-        "subscriber": {"reference": subject_ref},  # ✅ Must be Patient or RelatedPerson
-        "text": {
-            "status": "generated",
-            "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Funding Source: {patient.operation_funding}</div>"
+        "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
+        "resource": {
+            "resourceType": "Coverage",
+            "id": str(uuid.uuid4()),
+            "status": "active",
+            "kind": "insurance",
+            "type": {"text": patient.operation_funding},
+            "beneficiary": {"reference": subject_ref},
+            "subscriber": {"reference": subject_ref},
+            "text": {
+                "status": "generated",
+                "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>Funding Source: {patient.operation_funding}</div>"
+            }
         }
-    }
-})
+    })
 
-
-    # ID Proofs: remove example URLs
+    # ID Proofs
     for id_type, id_value in patient.id_proof.items():
         entries.append({
             "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
@@ -924,12 +967,7 @@ def convert_patientmedical_to_fhir(patient: PatientMedical) -> Dict[str, Any]:
                 "status": "current",
                 "type": {"text": id_type.upper()},
                 "subject": {"reference": subject_ref},
-                "content": [{
-                    "attachment": {
-                        "title": id_value,
-                        "url": f"urn:idproof:{id_type}:{id_value}"  # no http://example.org
-                    }
-                }],
+                "content": [{"attachment": {"title": id_value, "url": f"urn:idproof:{id_type}:{id_value}"}}],
                 "text": {
                     "status": "generated",
                     "div": f"<div xmlns='http://www.w3.org/1999/xhtml'>{id_type.upper()}: {id_value}</div>"
@@ -957,7 +995,7 @@ LOINC_CODE_MAP = {
 def get_collection(side: str):
     return medical_left if side == "left" else medical_right
 
-def generate_fhir_bundle(assignments: List[QuestionnaireAssignment], existing_patient_uuid: str = None, patient_id: str = None):
+def generate_fhir_bundle(assignments: List[QuestionnaireAssignment], scores: List[QuestionnaireScore] = None, existing_patient_uuid: str = None, patient_id: str = None):
     bundle = {
         "resourceType": "Bundle",
         "type": "collection",
@@ -965,12 +1003,9 @@ def generate_fhir_bundle(assignments: List[QuestionnaireAssignment], existing_pa
     }
 
     if assignments:
-        # Use provided patient_uuid or generate a new one
         patient_uuid = existing_patient_uuid or str(uuid.uuid4())
-        # Use provided patient_id or from assignments
         patient_id = patient_id or assignments[0].uhid.lower()
 
-        # Only add Patient resource if no existing patient_uuid given
         if not existing_patient_uuid:
             bundle["entry"].append({
                 "fullUrl": f"urn:uuid:{patient_uuid}",
@@ -988,38 +1023,72 @@ def generate_fhir_bundle(assignments: List[QuestionnaireAssignment], existing_pa
             obs_uuid = str(uuid.uuid4())
             code, display = LOINC_CODE_MAP.get(a.name, ("unknown", "Unknown"))
 
+            # Match score for the same UHID, side, and name
+            matching_score = None
+            if scores:
+                matching_score = next((s for s in scores if s.uhid == a.uhid and s.side == a.side and s.name == a.name and s.period == a.period), None)
+
+            observation = {
+                "resourceType": "Observation",
+                "id": obs_uuid,
+                "status": "preliminary",
+                "subject": {
+                    "reference": f"urn:uuid:{patient_uuid}"
+                },
+                "performer": [
+                    {
+                        "display": "Automated system"
+                    }
+                ],
+                "code": {
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/data-absent-reason",
+                        "code": code,
+                        "display": display
+                    }],
+                    "text": a.name
+                },
+                "effectivePeriod": {
+                    "start": a.assigned_date,
+                    "end": a.deadline
+                },
+                "component": [
+                    {
+                        "code": {
+                            "text": "Completion Status"
+                        },
+                        "valueBoolean": bool(a.completed)
+                    }
+                ],
+                "valueString": f"Scores ({a.period})",
+                "text": {
+                    "status": "generated",
+                    "div": f'<div xmlns="http://www.w3.org/1999/xhtml"><p>{a.name} Scores ({a.period}), Completed: {a.completed}</p></div>'
+                }
+            }
+
+            # Add scores as components
+            if matching_score and matching_score.score:
+                for idx, val in enumerate(matching_score.score, start=1):
+                    observation["component"].append({
+                        "code": {
+                            "text": f"Score {idx}"
+                        },
+                        "valueInteger": val
+                    })
+
+            # Add others as notes
+            if matching_score and matching_score.others:
+                observation["note"] = [{"text": note} for note in matching_score.others]
+
             bundle["entry"].append({
                 "fullUrl": f"urn:uuid:{obs_uuid}",
-                "resource": {
-                    "resourceType": "Observation",
-                    "id": obs_uuid,
-                    "status": "preliminary",
-                    "subject": {
-                        "reference": f"urn:uuid:{patient_uuid}"
-                    },
-                    "performer": [
-                        {
-                            "display": "Automated system"
-                        }
-                    ],
-                    "code": {
-                        "coding": [{
-                            "system": "http://terminology.hl7.org/CodeSystem/data-absent-reason",
-                            "code": code,
-                            "display": display
-                        }],
-                        "text": a.name
-                    },
-                    "effectiveDateTime": a.assigned_date,
-                    "valueString": f"Scores ({a.period})",
-                    "text": {
-                        "status": "generated",
-                        "div": f'<div xmlns="http://www.w3.org/1999/xhtml"><p>{a.name} Scores ({a.period})</p></div>'
-                    }
-                }
+                "resource": observation
             })
 
     return bundle
+
+
 
 def post_surgery_to_fhir_bundle(post_surgery_detail: BaseModel) -> Dict[str, Any]:
     def observation_from_data(
@@ -1168,3 +1237,88 @@ def post_surgery_to_fhir_bundle(post_surgery_detail: BaseModel) -> Dict[str, Any
         bundle["entry"].append({"fullUrl": obs_fullUrl, "resource": obs})
 
     return bundle
+
+def feedback_to_fhir_bundle(feedback: Feedback) -> Dict:
+    observation_id = str(uuid.uuid4())
+
+    # Create Observation resource without invalid LOINC and example URLs
+    observation_resource = {
+        "resourceType": "Observation",
+        "id": observation_id,
+        "status": "final",
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                        "code": "survey",
+                        "display": "Survey"
+                    }
+                ]
+            }
+        ],
+        "code": {
+            "text": f"Patient Feedback for {feedback.period}"
+        },
+        "subject": {
+            "identifier": {
+                "system": "urn:uhid",  # Avoid example.org
+                "value": feedback.uhid
+            }
+        },
+        "effectiveDateTime": feedback.timestamp.isoformat(),
+        "performer": [
+            {
+                "display": "Patient"
+            }
+        ],
+        "component": [],
+        "text": {
+            "status": "generated",
+            "div": f"<div xmlns='http://www.w3.org/1999/xhtml'><p>Feedback for {feedback.period}, Side: {feedback.side}</p></div>"
+        }
+    }
+
+    # Add period as component
+    observation_resource["component"].append({
+        "code": {
+            "text": "Feedback Period"
+        },
+        "valueString": feedback.period
+    })
+
+    # Add side as component
+    observation_resource["component"].append({
+        "code": {
+            "text": "Affected Side"
+        },
+        "valueString": feedback.side
+    })
+
+    # Add ratings as components
+    for idx, r in enumerate(feedback.rating, start=1):
+        observation_resource["component"].append({
+            "code": {
+                "text": f"Rating {idx}"
+            },
+            "valueInteger": r
+        })
+
+    # Create FHIR Bundle
+    bundle = {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+            {
+                "fullUrl": f"urn:uuid:{observation_id}",
+                "resource": observation_resource,
+                "request": {
+                    "method": "POST",
+                    "url": "Observation"
+                }
+            }
+        ]
+    }
+
+    return bundle
+
